@@ -18,15 +18,13 @@ public class PlayerController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponentInChildren<Animator>();
-
-        // Inicializa os parâmetros do Animator
-        animator.SetBool("isAttacking", false);
-        animator.SetBool("isJumping", false);
     }
 
     private void Update()
     {
         HandleInput();
+        UpdateAnimationState();
+        HandleAttack();
         UpdateAnimationState();
     }
 
@@ -39,16 +37,17 @@ public class PlayerController : MonoBehaviour
         {
             Jump();
         }
-
-        if (Input.GetMouseButtonDown(0)) // Botão esquerdo do mouse para atacar
-        {
-            Attack();
-        }
     }
 
     private void Move(float horizontalInput)
     {
-        if (isAttacking) return; // Impede movimento durante o ataque
+        // Impede movimento se o personagem estiver no estado de ataque
+        if (animator.GetCurrentAnimatorStateInfo(0).IsName("Attack"))
+        {
+            // Leve movimento durante o ataque na direção em que o personagem está virado
+            rb.linearVelocityX = 0.5f * Mathf.Sign(transform.localScale.x);
+            return;
+        }
 
         // Define o movimento horizontal
         rb.linearVelocityX = horizontalInput * moveSpeed;
@@ -67,16 +66,17 @@ public class PlayerController : MonoBehaviour
         animator.SetBool("isJumping", true);
     }
 
-    private void Attack()
+    private void HandleAttack()
     {
-        if (isAttacking) return; // Evita ataques enquanto outro ataque está em andamento
+        if (Input.GetMouseButtonDown(0) && !isAttacking)
+        {
+            isAttacking = true;
+            animator.SetBool("isAttacking", true);
 
-        isAttacking = true;
-        animator.SetBool("isAttacking", true);
-
-        // Programe o reset do ataque após a duração da animação
-        float attackDuration = 0.5f; // Ajuste conforme necessário
-        Invoke(nameof(ResetAttack), attackDuration);
+            // Obtém a duração da animação de ataque no estado atual
+            float attackDuration = animator.GetCurrentAnimatorStateInfo(0).length;
+            Invoke(nameof(ResetAttack), attackDuration); // Ajusta automaticamente para o tempo correto
+        }
     }
 
     private void ResetAttack()
@@ -85,10 +85,11 @@ public class PlayerController : MonoBehaviour
         animator.SetBool("isAttacking", false);
     }
 
+
     private void UpdateAnimationState()
     {
         bool isGrounded = IsGrounded();
-        bool isRunning = Mathf.Abs(rb.linearVelocityX) > 0.1f && !isAttacking;
+        bool isRunning = Mathf.Abs(rb.linearVelocityX) > 0.1f && !isJumping && !isAttacking;
 
         animator.SetBool("isRunning", isRunning);
 
@@ -101,7 +102,6 @@ public class PlayerController : MonoBehaviour
 
     private bool IsGrounded()
     {
-        // Verifica se o personagem está tocando o chão
         return rb.IsTouchingLayers(groundLayer);
     }
 }
