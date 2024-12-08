@@ -3,65 +3,57 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement Settings")]
-    [SerializeField] private float moveSpeed;       // Character's movement speed
-    [SerializeField] private float jumpForce;       // Jump force applied to the character
-    [SerializeField] private float dashSpeed;       // Speed during a dash
-    [SerializeField] private float dashDuration = 0.5f; // Duration of the dash
+    [SerializeField] private float moveSpeed;
+    [SerializeField] private float jumpForce;
+    [SerializeField] private float dashSpeed;
+    [SerializeField] private float dashDuration = 0.5f;
 
     [Header("Ground Layer")]
-    [SerializeField] private LayerMask groundLayer; // Layer used to determine if the character is grounded
+    [SerializeField] private LayerMask groundLayer;
 
-    // Components and states
-    private Rigidbody2D rb;                 // Rigidbody2D component for physics
-    private Animator animator;              // Animator component for animations
-    private bool isJumping;                 // Tracks if the character is currently jumping
-    private bool isDashAttacking;           // Tracks if the character is currently performing a dash attack
-    private float dashTime;                 // Tracks the elapsed time for the dash
+    private Rigidbody2D rb;
+    private Animator animator;
+    private bool isJumping;
+    private bool isDashAttacking;
+    private bool isGrounded;
+    private float dashTime;
 
     private void Awake()
     {
-        // Initialize components
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponentInChildren<Animator>();
     }
 
     private void Update()
     {
-        // Handle user input and update animation state each frame
         HandleInput();
         UpdateAnimationState();
     }
 
     private void FixedUpdate()
     {
-        // Handle dash movement in the physics update
         if (isDashAttacking)
         {
             DashMove();
         }
+        CheckGroundStatus();
     }
 
     private void HandleInput()
     {
-        // Get horizontal input (e.g., arrow keys or A/D keys)
         float horizontalInput = Input.GetAxisRaw("Horizontal");
-
-        // Handle movement
         Move(horizontalInput);
 
-        // Handle jump input
-        if (Input.GetKeyDown(KeyCode.Space) && IsGrounded())
+        if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
         {
             Jump();
         }
 
-        // Handle attack input
         if (Input.GetMouseButtonDown(0) && !isDashAttacking)
         {
             HandleAttack();
         }
 
-        // Handle dash attack input
         if (Input.GetMouseButtonDown(1) && !isDashAttacking && !isJumping)
         {
             HandleDashAttack(horizontalInput);
@@ -70,17 +62,14 @@ public class PlayerController : MonoBehaviour
 
     private void Move(float horizontalInput)
     {
-        // Prevent movement during normal attack (but allow it during dash)
         if (animator.GetCurrentAnimatorStateInfo(0).IsName("Attack") && !isDashAttacking)
         {
             return;
         }
 
-        // Apply horizontal movement
         rb.linearVelocityX = horizontalInput * moveSpeed;
-        rb.linearVelocityY = rb.linearVelocityY; // Maintain vertical velocity
+        rb.linearVelocityY = rb.linearVelocityY;
 
-        // Flip the character based on the direction of movement
         if (horizontalInput != 0)
         {
             transform.localScale = new Vector3(Mathf.Sign(horizontalInput), 1, 1);
@@ -89,12 +78,10 @@ public class PlayerController : MonoBehaviour
 
     private void DashMove()
     {
-        // Maintain constant speed during the dash
         rb.linearVelocityX = Mathf.Sign(transform.localScale.x) * dashSpeed;
-        rb.linearVelocityY = rb.linearVelocityY; // Maintain vertical velocity
+        rb.linearVelocityY = rb.linearVelocityY;
         dashTime += Time.deltaTime;
 
-        // End the dash if the duration is exceeded
         if (dashTime >= dashDuration)
         {
             ResetDashAttack();
@@ -103,36 +90,35 @@ public class PlayerController : MonoBehaviour
 
     private void Jump()
     {
-        // Apply jump force
-        rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
+        rb.linearVelocityY = jumpForce;
         isJumping = true;
+        isGrounded = false;
 
-        // Trigger jump animation
         animator.SetBool("isJumping", true);
+        Debug.Log("Jump initiated");
     }
 
     private void HandleAttack()
     {
-        // Trigger attack animation
-        animator.SetTrigger("isAttacking");
+        if (animator.GetCurrentAnimatorStateInfo(0).IsName("Attack"))
+        {
+            Debug.Log("Cannot attack, already attacking.");
+            return;
+        }
 
-        // Temporarily halt horizontal movement during attack
-        rb.linearVelocity = new Vector2(0, rb.linearVelocity.y);
+        animator.SetTrigger("isAttacking");
+        rb.linearVelocityX = 0;
 
         Debug.Log("Attack Triggered");
     }
 
     private void HandleDashAttack(float horizontalInput)
     {
-        // Start the dash attack
         isDashAttacking = true;
         animator.SetTrigger("isDashAttacking");
 
-        // Maintain the current movement direction
         rb.linearVelocityX = horizontalInput * moveSpeed;
         rb.linearVelocityY = rb.linearVelocityY;
-
-        // Reset dash timer
         dashTime = 0;
 
         Debug.Log("Dash Attack Triggered");
@@ -140,10 +126,7 @@ public class PlayerController : MonoBehaviour
 
     private void ResetDashAttack()
     {
-        // End the dash attack
         isDashAttacking = false;
-
-        // Reset dash animation trigger
         animator.ResetTrigger("isDashAttacking");
 
         Debug.Log("Dash Attack Reset");
@@ -151,26 +134,41 @@ public class PlayerController : MonoBehaviour
 
     private void UpdateAnimationState()
     {
-        // Check if the character is on the ground
-        bool isGrounded = IsGrounded();
+        bool isRunning = Mathf.Abs(rb.linearVelocityX) > 0.1f && !isJumping && !isDashAttacking;
+        bool isFalling = !isGrounded && rb.linearVelocityY < 0;
+        bool isIdle = isGrounded && Mathf.Abs(rb.linearVelocityX) < 0.1f && !isJumping;
 
-        // Check if the character is running
-        bool isRunning = Mathf.Abs(rb.linearVelocity.x) > 0.1f && !isJumping && !isDashAttacking;
+        animator.SetBool("isRunning", isRunning && !isFalling);
+        animator.SetBool("isGrounded", isGrounded);
+        animator.SetBool("isFalling", isFalling);
+        animator.SetBool("isIdle", isIdle);
 
-        // Update animator parameters
-        animator.SetBool("isRunning", isRunning);
+        if (isFalling)
+        {
+            Debug.Log("isFalling set to true");
+        }
+        else
+        {
+            Debug.Log("isFalling set to false");
+        }
 
-        // Reset jump animation if grounded
-        if (isGrounded && Mathf.Abs(rb.linearVelocity.y) < 0.1f)
+        if (isGrounded && Mathf.Abs(rb.linearVelocityY) < 0.1f)
         {
             isJumping = false;
             animator.SetBool("isJumping", false);
         }
+
+        Debug.Log($"Animation States -> isGrounded: {isGrounded}, isJumping: {isJumping}, isFalling: {animator.GetBool("isFalling")}, isRunning: {isRunning}, isIdle: {isIdle}");
     }
 
-    private bool IsGrounded()
+    private void CheckGroundStatus()
     {
-        // Check if the character is colliding with the ground layer
-        return rb.IsTouchingLayers(groundLayer);
+        bool wasGrounded = isGrounded;
+        isGrounded = rb.IsTouchingLayers(groundLayer);
+
+        if (isGrounded != wasGrounded)
+        {
+            Debug.Log($"isGrounded changed to: {isGrounded}");
+        }
     }
 }
